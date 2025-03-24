@@ -998,8 +998,24 @@ func TestDynamicStructWithJSON(t *testing.T) {
 
 			// Verify the JSON structure
 			expectedEmptyJSON := `{"ID":0,"Name":"","Email":"","Active":false}`
-			if string(emptyJSON) != expectedEmptyJSON {
-				t.Errorf("json.Marshal() = %v, want %v", string(emptyJSON), expectedEmptyJSON)
+			expected := map[string]interface{}{}
+
+			err = json.Unmarshal([]byte(expectedEmptyJSON), &expected)
+
+			if err != nil {
+				t.Errorf("json.Unmarshal() error = %v", err)
+			}
+
+			actual := map[string]interface{}{}
+
+			err = json.Unmarshal(emptyJSON, &actual)
+
+			if err != nil {
+				t.Errorf("json.Unmarshal() error = %v", err)
+			}
+
+			if !reflect.DeepEqual(actual, expected) {
+				t.Errorf("json.Marshal() = %v, want %v", actual, expected)
 			}
 		},
 	)
@@ -1111,8 +1127,25 @@ func TestDynamicStructWithJSON(t *testing.T) {
 
 			// Verify JSON output
 			expectedJSON := `{"ID":42,"Name":"Alice"}`
-			if string(jsonData) != expectedJSON {
-				t.Errorf("json.Marshal() = %v, want %v", string(jsonData), expectedJSON)
+
+			var expected map[string]interface{}
+
+			err = json.Unmarshal([]byte(expectedJSON), &expected)
+
+			if err != nil {
+				t.Fatalf("Failed to unmarshal expected JSON: %v", err)
+			}
+
+			var actual map[string]interface{}
+
+			err = json.Unmarshal(jsonData, &actual)
+
+			if err != nil {
+				t.Fatalf("Failed to unmarshal actual JSON: %v", err)
+			}
+
+			if !reflect.DeepEqual(actual, expected) {
+				t.Errorf("json.Marshal() = %v, want %v", actual, expected)
 			}
 		},
 	)
