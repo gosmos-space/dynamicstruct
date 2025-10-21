@@ -128,3 +128,23 @@ func (b *Builder) GetFieldValue(name string, value any) error {
 
 	return nil
 }
+
+func (b *Builder) GetField(name string) (any, error) {
+	b.m.Lock()
+	defer b.m.Unlock()
+
+	// Check if instance is built
+	if b.instance == nil {
+		return nil, ErrInstanceNotBuilt
+	}
+
+	// Get the field by name
+	field := b.instance.FieldByName(name)
+
+	if !field.IsValid() {
+		return nil, ErrFieldNotFound
+	}
+
+	// Return the field value as interface{}
+	return field.Interface(), nil
+}

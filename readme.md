@@ -64,6 +64,44 @@ if err != nil {
 }
 ```
 
+### Getting Field Values Directly
+
+For convenience, you can also get field values directly without providing a pointer:
+
+```go
+// Get field values directly as interface{}
+name, err := builder.GetField("Name")
+if err != nil {
+    // Handle error
+    // Possible errors: 
+    // - ErrInstanceNotBuilt
+    // - ErrFieldNotFound
+}
+
+// Type assertion is needed when using GetField
+nameStr, ok := name.(string)
+if !ok {
+    // Handle type assertion failure
+}
+
+// Example with different types
+age, err := builder.GetField("Age")
+if err == nil {
+    if ageInt, ok := age.(int); ok {
+        fmt.Printf("Age: %d\n", ageInt)
+    }
+}
+
+active, err := builder.GetField("Active")
+if err == nil {
+    if activeBool, ok := active.(bool); ok {
+        fmt.Printf("Active: %t\n", activeBool)
+    }
+}
+```
+
+Note: `GetField` returns the field value as `interface{}`, so you need to perform type assertion to get the actual typed value. Use `GetFieldValue` if you prefer compile-time type safety.
+
 ### Resetting the Builder
 
 ```go

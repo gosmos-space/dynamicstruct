@@ -369,6 +369,177 @@ func TestGetFieldValue(t *testing.T) {
 	)
 }
 
+func TestGetField(t *testing.T) {
+	t.Run(
+		"get_before_build", func(t *testing.T) {
+			builder := dynamicstruct.New()
+			_, err := builder.GetField("Test")
+			if !errors.Is(err, dynamicstruct.ErrInstanceNotBuilt) {
+				t.Errorf(
+					"GetField() before build error = %v, want %v",
+					err,
+					dynamicstruct.ErrInstanceNotBuilt,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"get_nonexistent_field", func(t *testing.T) {
+			builder := dynamicstruct.New()
+			_ = builder.AddField("Name", "")
+			_, err := builder.Build()
+			if err != nil {
+				t.Fatalf("Build() error = %v", err)
+			}
+
+			_, err = builder.GetField("NonExistent")
+			if !errors.Is(err, dynamicstruct.ErrFieldNotFound) {
+				t.Errorf(
+					"GetField() nonexistent field error = %v, want %v",
+					err,
+					dynamicstruct.ErrFieldNotFound,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"get_field_successfully", func(t *testing.T) {
+			builder := dynamicstruct.New()
+			_ = builder.AddField("Name", "")        // AddField only uses type, creates zero value
+			_ = builder.AddField("Age", int(0))     // Zero value int
+			_ = builder.AddField("IsActive", false) // Zero value bool
+			_ = builder.AddField("Score", 0.0)      // Zero value float64
+
+			_, err := builder.Build()
+			if err != nil {
+				t.Fatalf("Build() error = %v", err)
+			}
+
+			// Test string field (zero value)
+			name, err := builder.GetField("Name")
+			if err != nil {
+				t.Errorf("GetField() for Name error = %v, wantErr nil", err)
+			}
+			if nameStr, ok := name.(string); !ok || nameStr != "" {
+				t.Errorf("GetField() Name = %v, want \"\"", name)
+			}
+
+			// Test int field (zero value)
+			age, err := builder.GetField("Age")
+			if err != nil {
+				t.Errorf("GetField() for Age error = %v, wantErr nil", err)
+			}
+			if ageInt, ok := age.(int); !ok || ageInt != 0 {
+				t.Errorf("GetField() Age = %v, want 0", age)
+			}
+
+			// Test bool field (zero value)
+			isActive, err := builder.GetField("IsActive")
+			if err != nil {
+				t.Errorf("GetField() for IsActive error = %v, wantErr nil", err)
+			}
+			if activeBool, ok := isActive.(bool); !ok || activeBool {
+				t.Errorf("GetField() IsActive = %v, want false", isActive)
+			}
+
+			// Test float field (zero value)
+			score, err := builder.GetField("Score")
+			if err != nil {
+				t.Errorf("GetField() for Score error = %v, wantErr nil", err)
+			}
+			if scoreFloat, ok := score.(float64); !ok || scoreFloat != 0.0 {
+				t.Errorf("GetField() Score = %v, want 0.0", score)
+			}
+		},
+	)
+
+	t.Run(
+		"get_complex_types", func(t *testing.T) {
+			builder := dynamicstruct.New()
+
+			// Add complex type fields - AddField only uses types, creates zero values
+			_ = builder.AddField("Slice", []string{})     // Zero value slice
+			_ = builder.AddField("Map", map[string]int{}) // Zero value map
+			_ = builder.AddField("Struct", Person{})      // Zero value struct
+
+			_, err := builder.Build()
+			if err != nil {
+				t.Fatalf("Build() error = %v", err)
+			}
+
+			// Test slice field (zero value)
+			slice, err := builder.GetField("Slice")
+			if err != nil {
+				t.Errorf("GetField() for Slice error = %v, wantErr nil", err)
+			}
+			if sliceVal, ok := slice.([]string); !ok || sliceVal != nil {
+				t.Errorf("GetField() Slice = %v, want nil slice", slice)
+			}
+
+			// Test map field (zero value)
+			mapVal, err := builder.GetField("Map")
+			if err != nil {
+				t.Errorf("GetField() for Map error = %v, wantErr nil", err)
+			}
+			if mapResult, ok := mapVal.(map[string]int); !ok || mapResult != nil {
+				t.Errorf("GetField() Map = %v, want nil map", mapVal)
+			}
+
+			// Test struct field (zero value)
+			structVal, err := builder.GetField("Struct")
+			if err != nil {
+				t.Errorf("GetField() for Struct error = %v, wantErr nil", err)
+			}
+			if structResult, ok := structVal.(Person); !ok || structResult.Name != "" || structResult.Age != 0 || structResult.Active != false {
+				t.Errorf("GetField() Struct = %v, want Person{Name:\"\", Age:0, Active:false}", structVal)
+			}
+		},
+	)
+
+	t.Run(
+		"get_zero_values", func(t *testing.T) {
+			builder := dynamicstruct.New()
+			_ = builder.AddField("Name", "")      // zero value string
+			_ = builder.AddField("Age", int(0))   // zero value int
+			_ = builder.AddField("Active", false) // zero value bool
+
+			_, err := builder.Build()
+			if err != nil {
+				t.Fatalf("Build() error = %v", err)
+			}
+
+			// Test zero value string
+			name, err := builder.GetField("Name")
+			if err != nil {
+				t.Errorf("GetField() for Name error = %v, wantErr nil", err)
+			}
+			if nameStr, ok := name.(string); !ok || nameStr != "" {
+				t.Errorf("GetField() Name = %v, want \"\"", name)
+			}
+
+			// Test zero value int
+			age, err := builder.GetField("Age")
+			if err != nil {
+				t.Errorf("GetField() for Age error = %v, wantErr nil", err)
+			}
+			if ageInt, ok := age.(int); !ok || ageInt != 0 {
+				t.Errorf("GetField() Age = %v, want 0", age)
+			}
+
+			// Test zero value bool
+			active, err := builder.GetField("Active")
+			if err != nil {
+				t.Errorf("GetField() for Active error = %v, wantErr nil", err)
+			}
+			if activeBool, ok := active.(bool); !ok || activeBool {
+				t.Errorf("GetField() Active = %v, want false", active)
+			}
+		},
+	)
+}
+
 func TestReset(t *testing.T) {
 	t.Run(
 		"reset_after_build", func(t *testing.T) {
