@@ -7,6 +7,7 @@ DynamicStruct is a Go package that enables runtime creation and manipulation of 
 - Create struct types dynamically at runtime
 - Add and remove fields with type safety
 - Support for struct tags (JSON, XML, validation, etc.)
+- Support for anonymous fields (embedding)
 - Thread-safe operations with mutex protection
 - Access field values with type checking
 - Works seamlessly with Go's standard library, including JSON encoding/decoding
@@ -144,6 +145,59 @@ if errors.Is(err, dynamicstruct.ErrInvalidTag) {
 }
 ```
 
+### Working with Anonymous Fields
+
+Anonymous fields (also known as embedded fields) allow you to embed types directly into your dynamic struct:
+
+```go
+// Define some types to embed
+type Person struct {
+    Name string
+    Age  int
+}
+
+type Address struct {
+    Street string
+    City   string
+}
+
+builder := dynamicstruct.New()
+
+// Add anonymous fields (they will appear first in the struct)
+_ = builder.AddAnonymousField(Person{})
+_ = builder.AddAnonymousField(Address{}, `json:",inline"`)
+
+// Add regular fields
+_ = builder.AddField("ID", int(0))
+_ = builder.AddField("Active", false)
+
+// Build the struct
+instance, _ := builder.Build()
+
+// Access anonymous fields by type
+person, err := builder.GetAnonymousField(Person{})
+if err == nil {
+    personStruct := person.(Person) // Type assertion required
+}
+
+// Type-safe access to anonymous fields
+var personValue Person
+err = builder.GetAnonymousFieldValue(Person{}, &personValue)
+if err == nil {
+    // personValue now contains the Person data
+}
+
+// Access regular fields normally
+id, _ := builder.GetField("ID")
+```
+
+**Anonymous Field Features:**
+- Anonymous fields are placed first in the struct
+- Access by type using `GetAnonymousField()` or `GetAnonymousFieldValue()`
+- Support for struct tags
+- Duplicate types are not allowed (returns `ErrAnonymousFieldAlreadyExists`)
+- Works with any type: structs, primitives, slices, maps, etc.
+
 ### Resetting the Builder
 
 ```go
@@ -205,13 +259,22 @@ The package provides specific error types:
 - `ErrFieldNotFound`: When the requested field doesn't exist
 - `ErrIncompatibleTypes`: When the field type doesn't match the pointer type
 - `ErrInvalidTag`: When providing an invalid struct tag format
+- `ErrAnonymousFieldAlreadyExists`: When trying to add an anonymous field of a type that already exists
+- `ErrAnonymousFieldNotFound`: When trying to access an anonymous field that doesn't exist
 
 Use `errors.Is()` to check for these specific errors:
 
 ```go
+// Check for regular field errors
 err := builder.AddField("Name", "")
 if errors.Is(err, dynamicstruct.ErrFieldAlreadyExists) {
     // Handle duplicate field
+}
+
+// Check for anonymous field errors
+err = builder.AddAnonymousField(Person{})
+if errors.Is(err, dynamicstruct.ErrAnonymousFieldAlreadyExists) {
+    // Handle duplicate anonymous field type
 }
 ```
 

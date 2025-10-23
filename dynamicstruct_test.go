@@ -1975,3 +1975,451 @@ func TestJSONWorkflow(t *testing.T) {
 		},
 	)
 }
+
+// Test types for anonymous field testing
+type PersonTest struct {
+	Name string
+	Age  int
+}
+
+type AddressTest struct {
+	Street string
+	City   string
+}
+
+type ContactTest struct {
+	Email string
+	Phone string
+}
+
+func TestAddAnonymousField(t *testing.T) {
+	tests := []struct {
+		name      string
+		fieldType interface{}
+		tags      []string
+		wantErr   error
+	}{
+		{
+			name:      "add_person_anonymous_field",
+			fieldType: PersonTest{},
+			tags:      []string{},
+			wantErr:   nil,
+		},
+		{
+			name:      "add_address_anonymous_field_with_tags",
+			fieldType: AddressTest{},
+			tags:      []string{`json:",inline"`},
+			wantErr:   nil,
+		},
+		{
+			name:      "add_string_anonymous_field",
+			fieldType: "",
+			tags:      []string{},
+			wantErr:   nil,
+		},
+		{
+			name:      "add_int_anonymous_field",
+			fieldType: int(0),
+			tags:      []string{},
+			wantErr:   nil,
+		},
+		{
+			name:      "add_duplicate_anonymous_field",
+			fieldType: PersonTest{},
+			tags:      []string{},
+			wantErr:   dynamicstruct.ErrAnonymousFieldAlreadyExists,
+		},
+		{
+			name:      "add_anonymous_field_with_invalid_tag",
+			fieldType: ContactTest{},
+			tags:      []string{`json:"name" invalid_format`},
+			wantErr:   dynamicstruct.ErrInvalidTag,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder := dynamicstruct.New()
+
+			if tt.name == "add_duplicate_anonymous_field" {
+				// First add a PersonTest field
+				err := builder.AddAnonymousField(PersonTest{})
+				if err != nil {
+					t.Fatalf("First AddAnonymousField() failed: %v", err)
+				}
+			}
+
+			err := builder.AddAnonymousField(tt.fieldType, tt.tags...)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("AddAnonymousField() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("AddAnonymousField() unexpected error = %v", err)
+				return
+			}
+
+			// Build and verify the struct has the correct anonymous field
+			instance, err := builder.Build()
+			if err != nil {
+				t.Fatalf("Build() error = %v", err)
+			}
+
+			// Use reflection to check if the anonymous field was added correctly
+			structType := reflect.TypeOf(instance)
+			found := false
+			expectedType := reflect.TypeOf(tt.fieldType)
+
+			for i := 0; i < structType.NumField(); i++ {
+				field := structType.Field(i)
+				if field.Anonymous && field.Type == expectedType {
+					found = true
+					if len(tt.tags) > 0 {
+						expectedTag := strings.Join(tt.tags, " ")
+						if string(field.Tag) != expectedTag {
+							t.Errorf("Anonymous field tag = %q, want %q", field.Tag, expectedTag)
+						}
+					}
+					break
+				}
+			}
+
+			if !found {
+				t.Errorf("Anonymous field of type %s not found in struct", expectedType.Name())
+			}
+		})
+	}
+}
+
+func TestAnonymousFieldAfterBuild(t *testing.T) {
+	t.Run("add_anonymous_field_after_build", func(t *testing.T) {
+		builder := dynamicstruct.New()
+		builder.AddField("Name", "")
+		_, err := builder.Build()
+		if err != nil {
+			t.Fatalf("Build() error = %v", err)
+		}
+
+		err = builder.AddAnonymousField(PersonTest{})
+		if !errors.Is(err, dynamicstruct.ErrInstanceAlreadyBuilt) {
+			t.Errorf("AddAnonymousField() after build error = %v, want %v", err, dynamicstruct.ErrInstanceAlreadyBuilt)
+		}
+	})
+}
+
+func TestGetAnonymousField(t *testing.T) {
+	tests := []struct {
+		name      string
+		setupFunc func(builder *dynamicstruct.Builder)
+		fieldType interface{}
+		wantErr   error
+	}{
+		{
+			name: "get_person_anonymous_field",
+			setupFunc: func(builder *dynamicstruct.Builder) {
+				builder.AddAnonymousField(PersonTest{})
+				builder.Build()
+			},
+			fieldType: PersonTest{},
+			wantErr:   nil,
+		},
+		{
+			name: "get_address_anonymous_field",
+			setupFunc: func(builder *dynamicstruct.Builder) {
+				builder.AddAnonymousField(AddressTest{})
+				builder.Build()
+			},
+			fieldType: AddressTest{},
+			wantErr:   nil,
+		},
+		{
+			name: "get_nonexistent_anonymous_field",
+			setupFunc: func(builder *dynamicstruct.Builder) {
+				builder.AddAnonymousField(PersonTest{})
+				builder.Build()
+			},
+			fieldType: ContactTest{},
+			wantErr:   dynamicstruct.ErrAnonymousFieldNotFound,
+		},
+		{
+			name: "get_anonymous_field_before_build",
+			setupFunc: func(builder *dynamicstruct.Builder) {
+				builder.AddAnonymousField(PersonTest{})
+				// Don't build
+			},
+			fieldType: PersonTest{},
+			wantErr:   dynamicstruct.ErrInstanceNotBuilt,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder := dynamicstruct.New()
+			tt.setupFunc(builder)
+
+			value, err := builder.GetAnonymousField(tt.fieldType)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("GetAnonymousField() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("GetAnonymousField() unexpected error = %v", err)
+				return
+			}
+
+			if value == nil {
+				t.Error("GetAnonymousField() returned nil value")
+				return
+			}
+
+			// Verify the type matches
+			expectedType := reflect.TypeOf(tt.fieldType)
+			actualType := reflect.TypeOf(value)
+			if actualType != expectedType {
+				t.Errorf("GetAnonymousField() returned type %v, want %v", actualType, expectedType)
+			}
+		})
+	}
+}
+
+func TestGetAnonymousFieldValue(t *testing.T) {
+	tests := []struct {
+		name      string
+		setupFunc func(builder *dynamicstruct.Builder)
+		fieldType interface{}
+		valuePtr  interface{}
+		wantErr   error
+	}{
+		{
+			name: "get_person_anonymous_field_value",
+			setupFunc: func(builder *dynamicstruct.Builder) {
+				builder.AddAnonymousField(PersonTest{})
+				builder.Build()
+			},
+			fieldType: PersonTest{},
+			valuePtr:  &PersonTest{},
+			wantErr:   nil,
+		},
+		{
+			name: "get_string_anonymous_field_value",
+			setupFunc: func(builder *dynamicstruct.Builder) {
+				builder.AddAnonymousField("")
+				builder.Build()
+			},
+			fieldType: "",
+			valuePtr:  new(string),
+			wantErr:   nil,
+		},
+		{
+			name: "get_anonymous_field_value_wrong_type",
+			setupFunc: func(builder *dynamicstruct.Builder) {
+				builder.AddAnonymousField(PersonTest{})
+				builder.Build()
+			},
+			fieldType: PersonTest{},
+			valuePtr:  &AddressTest{},
+			wantErr:   dynamicstruct.ErrIncompatibleTypes,
+		},
+		{
+			name: "get_anonymous_field_value_non_pointer",
+			setupFunc: func(builder *dynamicstruct.Builder) {
+				builder.AddAnonymousField(PersonTest{})
+				builder.Build()
+			},
+			fieldType: PersonTest{},
+			valuePtr:  PersonTest{},
+			wantErr:   dynamicstruct.ErrValueMustBePointer,
+		},
+		{
+			name: "get_anonymous_field_value_nil_pointer",
+			setupFunc: func(builder *dynamicstruct.Builder) {
+				builder.AddAnonymousField(PersonTest{})
+				builder.Build()
+			},
+			fieldType: PersonTest{},
+			valuePtr:  (*PersonTest)(nil),
+			wantErr:   dynamicstruct.ErrValueCannotBeNil,
+		},
+		{
+			name: "get_nonexistent_anonymous_field_value",
+			setupFunc: func(builder *dynamicstruct.Builder) {
+				builder.AddAnonymousField(PersonTest{})
+				builder.Build()
+			},
+			fieldType: ContactTest{},
+			valuePtr:  &ContactTest{},
+			wantErr:   dynamicstruct.ErrAnonymousFieldNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder := dynamicstruct.New()
+			tt.setupFunc(builder)
+
+			err := builder.GetAnonymousFieldValue(tt.fieldType, tt.valuePtr)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("GetAnonymousFieldValue() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("GetAnonymousFieldValue() unexpected error = %v", err)
+			}
+		})
+	}
+}
+
+func TestAnonymousFieldsOrder(t *testing.T) {
+	t.Run("anonymous_fields_come_first", func(t *testing.T) {
+		builder := dynamicstruct.New()
+
+		// Add regular field first
+		builder.AddField("RegularField", "")
+
+		// Add anonymous fields
+		builder.AddAnonymousField(PersonTest{})
+		builder.AddAnonymousField(AddressTest{})
+
+		instance, err := builder.Build()
+		if err != nil {
+			t.Fatalf("Build() error = %v", err)
+		}
+
+		structType := reflect.TypeOf(instance)
+
+		// Check that first two fields are anonymous
+		if structType.NumField() < 3 {
+			t.Fatalf("Expected at least 3 fields, got %d", structType.NumField())
+		}
+
+		// First field should be PersonTest (anonymous)
+		firstField := structType.Field(0)
+		if !firstField.Anonymous || firstField.Type != reflect.TypeOf(PersonTest{}) {
+			t.Errorf("First field should be anonymous PersonTest, got %+v", firstField)
+		}
+
+		// Second field should be AddressTest (anonymous)
+		secondField := structType.Field(1)
+		if !secondField.Anonymous || secondField.Type != reflect.TypeOf(AddressTest{}) {
+			t.Errorf("Second field should be anonymous AddressTest, got %+v", secondField)
+		}
+
+		// Third field should be RegularField (not anonymous)
+		thirdField := structType.Field(2)
+		if thirdField.Anonymous || thirdField.Name != "RegularField" {
+			t.Errorf("Third field should be regular RegularField, got %+v", thirdField)
+		}
+	})
+}
+
+func TestAnonymousFieldsReset(t *testing.T) {
+	t.Run("reset_clears_anonymous_fields", func(t *testing.T) {
+		builder := dynamicstruct.New()
+
+		// Add anonymous fields
+		builder.AddAnonymousField(PersonTest{})
+		builder.AddAnonymousField(AddressTest{})
+
+		// Build
+		_, err := builder.Build()
+		if err != nil {
+			t.Fatalf("Build() error = %v", err)
+		}
+
+		// Reset
+		builder.Reset()
+
+		// Try to add the same anonymous field again - should work
+		err = builder.AddAnonymousField(PersonTest{})
+		if err != nil {
+			t.Errorf("AddAnonymousField() after reset error = %v", err)
+		}
+
+		// Build again
+		instance, err := builder.Build()
+		if err != nil {
+			t.Fatalf("Build() after reset error = %v", err)
+		}
+
+		// Should only have one anonymous field now
+		structType := reflect.TypeOf(instance)
+		anonymousCount := 0
+		for i := 0; i < structType.NumField(); i++ {
+			if structType.Field(i).Anonymous {
+				anonymousCount++
+			}
+		}
+
+		if anonymousCount != 1 {
+			t.Errorf("Expected 1 anonymous field after reset, got %d", anonymousCount)
+		}
+	})
+}
+
+func TestAnonymousFieldsIntegration(t *testing.T) {
+	t.Run("mixed_fields_workflow", func(t *testing.T) {
+		builder := dynamicstruct.New()
+
+		// Add mix of regular and anonymous fields
+		builder.AddField("ID", int(0))
+		builder.AddAnonymousField(PersonTest{}, `json:",inline"`)
+		builder.AddField("Active", false)
+		builder.AddAnonymousField(AddressTest{})
+
+		_, err := builder.Build()
+		if err != nil {
+			t.Fatalf("Build() error = %v", err)
+		}
+
+		// Test regular field access
+		id, err := builder.GetField("ID")
+		if err != nil {
+			t.Errorf("GetField(ID) error = %v", err)
+		}
+		if _, ok := id.(int); !ok {
+			t.Errorf("ID field should be int, got %T", id)
+		}
+
+		// Test anonymous field access
+		person, err := builder.GetAnonymousField(PersonTest{})
+		if err != nil {
+			t.Errorf("GetAnonymousField(PersonTest) error = %v", err)
+		}
+		if _, ok := person.(PersonTest); !ok {
+			t.Errorf("PersonTest field should be PersonTest, got %T", person)
+		}
+
+		address, err := builder.GetAnonymousField(AddressTest{})
+		if err != nil {
+			t.Errorf("GetAnonymousField(AddressTest) error = %v", err)
+		}
+		if _, ok := address.(AddressTest); !ok {
+			t.Errorf("AddressTest field should be AddressTest, got %T", address)
+		}
+
+		// Test type safety with GetAnonymousFieldValue
+		var personValue PersonTest
+		err = builder.GetAnonymousFieldValue(PersonTest{}, &personValue)
+		if err != nil {
+			t.Errorf("GetAnonymousFieldValue(PersonTest) error = %v", err)
+		}
+
+		var addressValue AddressTest
+		err = builder.GetAnonymousFieldValue(AddressTest{}, &addressValue)
+		if err != nil {
+			t.Errorf("GetAnonymousFieldValue(AddressTest) error = %v", err)
+		}
+	})
+}
