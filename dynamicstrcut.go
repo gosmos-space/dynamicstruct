@@ -35,14 +35,17 @@ func (b *Builder) AddField(name string, kind any, tags ...string) error {
 
 	// Build tag string from variadic tags
 	var tag reflect.StructTag
+
 	if len(tags) > 0 {
 		tagString := strings.Join(tags, " ")
+
 		// Validate tag format using structtag library, but only if not empty
 		if tagString != "" {
 			if _, err := structtag.Parse(tagString); err != nil {
 				return ErrInvalidTag
 			}
 		}
+
 		tag = reflect.StructTag(tagString)
 	}
 
