@@ -6,6 +6,7 @@ DynamicStruct is a Go package that enables runtime creation and manipulation of 
 
 - Create struct types dynamically at runtime
 - Add and remove fields with type safety
+- Support for struct tags (JSON, XML, validation, etc.)
 - Thread-safe operations with mutex protection
 - Access field values with type checking
 - Works seamlessly with Go's standard library, including JSON encoding/decoding
@@ -28,6 +29,10 @@ builder := dynamicstruct.New()
 _ = builder.AddField("Name", "")      // String field
 _ = builder.AddField("Age", int(0))   // Integer field
 _ = builder.AddField("Active", false) // Boolean field
+
+// Add fields with struct tags
+_ = builder.AddField("Email", "", `json:"email"`)
+_ = builder.AddField("UserID", int(0), `json:"user_id"`, `validate:"required"`)
 
 // Build the struct instance
 instance, err := builder.Build()
@@ -102,6 +107,43 @@ if err == nil {
 
 Note: `GetField` returns the field value as `interface{}`, so you need to perform type assertion to get the actual typed value. Use `GetFieldValue` if you prefer compile-time type safety.
 
+### Working with Struct Tags
+
+You can add struct tags to fields for use with JSON, XML, validation libraries, and more:
+
+```go
+builder := dynamicstruct.New()
+
+// Add fields with JSON tags
+_ = builder.AddField("UserName", "", `json:"username"`)
+_ = builder.AddField("EmailAddress", "", `json:"email"`)
+_ = builder.AddField("IsActive", false, `json:"active"`)
+
+// Add fields with multiple tags
+_ = builder.AddField("Price", float64(0), `json:"price,omitempty"`, `validate:"min=0"`)
+
+// Add fields with complex tags
+_ = builder.AddField("XMLField", "", `xml:"xmlfield,attr"`, `json:"-"`)
+
+// Build the struct
+instance, _ := builder.Build()
+
+// JSON marshaling will respect the tags
+jsonData, _ := json.Marshal(instance)
+// Output uses tag names: {"username":"","email":"","active":false,"price":0}
+```
+
+**Tag Validation:**
+The library validates struct tag format using `github.com/fatih/structtag`. Invalid tag formats will return `ErrInvalidTag`.
+
+```go
+// This will return an error due to invalid tag format
+err := builder.AddField("Invalid", "", `json:"name" invalid_format`)
+if errors.Is(err, dynamicstruct.ErrInvalidTag) {
+    // Handle invalid tag error
+}
+```
+
 ### Resetting the Builder
 
 ```go
@@ -117,11 +159,11 @@ _ = builder.AddField("ID", int(0))
 DynamicStruct works well with Go's standard JSON encoding/decoding:
 
 ```go
-// Create a struct dynamically
+// Create a struct dynamically with JSON tags
 builder := dynamicstruct.New()
-_ = builder.AddField("ID", int(0))
-_ = builder.AddField("Name", "")
-_ = builder.AddField("Email", "")
+_ = builder.AddField("ID", int(0), `json:"id"`)
+_ = builder.AddField("Name", "", `json:"name"`)
+_ = builder.AddField("Email", "", `json:"email"`)
 
 // Build it
 instance, _ := builder.Build()
@@ -144,10 +186,10 @@ if nameField.IsValid() && nameField.CanSet() {
 // Marshal to JSON
 jsonData, _ := json.Marshal(instancePtr)
 fmt.Println(string(jsonData))
-// Output: {"ID":42,"Name":"Alice","Email":""}
+// Output: {"id":42,"name":"Alice","email":""}
 
 // Unmarshal JSON back into a dynamic struct
-newData := []byte(`{"ID":123,"Name":"Bob","Email":"bob@example.com"}`)
+newData := []byte(`{"id":123,"name":"Bob","email":"bob@example.com"}`)
 json.Unmarshal(newData, instancePtr)
 ```
 
@@ -162,6 +204,7 @@ The package provides specific error types:
 - `ErrValueCannotBeNil`: When passing a nil pointer to GetFieldValue
 - `ErrFieldNotFound`: When the requested field doesn't exist
 - `ErrIncompatibleTypes`: When the field type doesn't match the pointer type
+- `ErrInvalidTag`: When providing an invalid struct tag format
 
 Use `errors.Is()` to check for these specific errors:
 
@@ -178,8 +221,8 @@ All operations in DynamicStruct are protected by a mutex, making it safe to use 
 
 ## Limitations
 
-- Currently, there's no direct support for JSON tags or other struct tags
 - Field visibility is limited (all fields are exported)
+- Struct tag validation requires the `github.com/fatih/structtag` dependency
 
 ## Cautions and Best Practices
 

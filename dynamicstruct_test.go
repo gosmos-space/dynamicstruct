@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -1577,6 +1578,299 @@ func TestDynamicStructWithMap(t *testing.T) {
 }
 
 // Example of using the dynamic struct with a common JSON workflow
+func TestAddFieldWithTags(t *testing.T) {
+	tests := []struct {
+		name      string
+		fieldName string
+		fieldType interface{}
+		tags      []string
+		wantErr   error
+	}{
+		{
+			name:      "add_field_with_json_tag",
+			fieldName: "Name",
+			fieldType: "",
+			tags:      []string{`json:"name"`},
+			wantErr:   nil,
+		},
+		{
+			name:      "add_field_with_multiple_tags",
+			fieldName: "Email",
+			fieldType: "",
+			tags:      []string{`json:"email"`, `validate:"required"`},
+			wantErr:   nil,
+		},
+		{
+			name:      "add_field_with_complex_json_tag",
+			fieldName: "Price",
+			fieldType: float64(0),
+			tags:      []string{`json:"price,omitempty"`},
+			wantErr:   nil,
+		},
+		{
+			name:      "add_field_without_tags",
+			fieldName: "SimpleField",
+			fieldType: int(0),
+			tags:      []string{},
+			wantErr:   nil,
+		},
+		{
+			name:      "add_field_with_invalid_tag",
+			fieldName: "InvalidField",
+			fieldType: "",
+			tags:      []string{`json:"name" invalid_tag_format`},
+			wantErr:   dynamicstruct.ErrInvalidTag,
+		},
+		{
+			name:      "add_field_with_empty_tag",
+			fieldName: "EmptyTag",
+			fieldType: "",
+			tags:      []string{``},
+			wantErr:   nil,
+		},
+		{
+			name:      "add_field_with_xml_tag",
+			fieldName: "XMLField",
+			fieldType: "",
+			tags:      []string{`xml:"xmlfield,attr"`},
+			wantErr:   nil,
+		},
+		{
+			name:      "add_field_with_db_tag",
+			fieldName: "DBField",
+			fieldType: "",
+			tags:      []string{`db:"db_field"`},
+			wantErr:   nil,
+		},
+		{
+			name:      "add_field_with_multiple_complex_tags",
+			fieldName: "ComplexField",
+			fieldType: "",
+			tags:      []string{`json:"complex_field,omitempty"`, `xml:"ComplexField"`, `validate:"required,min=1"`},
+			wantErr:   nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder := dynamicstruct.New()
+			err := builder.AddField(tt.fieldName, tt.fieldType, tt.tags...)
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("AddField() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("AddField() unexpected error = %v", err)
+				return
+			}
+
+			// Build and verify the struct has the correct tag
+			instance, err := builder.Build()
+			if err != nil {
+				t.Fatalf("Build() error = %v", err)
+			}
+
+			// Use reflection to check if the tag was set correctly
+			structType := reflect.TypeOf(instance)
+			field, found := structType.FieldByName(tt.fieldName)
+			if !found {
+				t.Fatalf("Field %s not found in struct", tt.fieldName)
+			}
+
+			if len(tt.tags) > 0 {
+				expectedTag := strings.Join(tt.tags, " ")
+				if string(field.Tag) != expectedTag {
+					t.Errorf("Field tag = %q, want %q", field.Tag, expectedTag)
+				}
+			} else {
+				if field.Tag != "" {
+					t.Errorf("Expected empty tag, got %q", field.Tag)
+				}
+			}
+		})
+	}
+}
+
+func TestTagValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		tags    []string
+		wantErr bool
+	}{
+		{
+			name:    "valid_json_tag",
+			tags:    []string{`json:"name"`},
+			wantErr: false,
+		},
+		{
+			name:    "valid_multiple_tags",
+			tags:    []string{`json:"name"`, `xml:"Name"`},
+			wantErr: false,
+		},
+		{
+			name:    "invalid_tag_format",
+			tags:    []string{`json:"name" invalid`},
+			wantErr: true,
+		},
+		{
+			name:    "valid_complex_tag",
+			tags:    []string{`json:"name,omitempty"`, `validate:"required,min=1,max=100"`},
+			wantErr: false,
+		},
+		{
+			name:    "empty_tag",
+			tags:    []string{``},
+			wantErr: false,
+		},
+		{
+			name:    "tag_with_spaces",
+			tags:    []string{`json:"field name"`},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder := dynamicstruct.New()
+			err := builder.AddField("TestField", "", tt.tags...)
+
+			if tt.wantErr && err == nil {
+				t.Error("Expected error but got none")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestBackwardCompatibility(t *testing.T) {
+	t.Run("old_addfield_syntax", func(t *testing.T) {
+		builder := dynamicstruct.New()
+
+		// Test that old syntax still works (no tags parameter)
+		err := builder.AddField("Name", "")
+		if err != nil {
+			t.Errorf("AddField() without tags error = %v", err)
+		}
+
+		err = builder.AddField("Age", int(0))
+		if err != nil {
+			t.Errorf("AddField() without tags error = %v", err)
+		}
+
+		instance, err := builder.Build()
+		if err != nil {
+			t.Fatalf("Build() error = %v", err)
+		}
+
+		// Verify fields exist and have no tags
+		structType := reflect.TypeOf(instance)
+
+		nameField, found := structType.FieldByName("Name")
+		if !found {
+			t.Fatal("Name field not found")
+		}
+		if nameField.Tag != "" {
+			t.Errorf("Name field should have empty tag, got %q", nameField.Tag)
+		}
+
+		ageField, found := structType.FieldByName("Age")
+		if !found {
+			t.Fatal("Age field not found")
+		}
+		if ageField.Tag != "" {
+			t.Errorf("Age field should have empty tag, got %q", ageField.Tag)
+		}
+	})
+}
+
+func TestJSONWithTags(t *testing.T) {
+	t.Run("json_marshaling_with_tags", func(t *testing.T) {
+		builder := dynamicstruct.New()
+
+		// Add fields with JSON tags
+		err := builder.AddField("UserName", "", `json:"username"`)
+		if err != nil {
+			t.Fatalf("AddField() error = %v", err)
+		}
+
+		err = builder.AddField("EmailAddress", "", `json:"email"`)
+		if err != nil {
+			t.Fatalf("AddField() error = %v", err)
+		}
+
+		err = builder.AddField("IsActive", false, `json:"active"`)
+		if err != nil {
+			t.Fatalf("AddField() error = %v", err)
+		}
+
+		err = builder.AddField("SecretField", "", `json:"-"`)
+		if err != nil {
+			t.Fatalf("AddField() error = %v", err)
+		}
+
+		err = builder.AddField("OptionalField", "", `json:"optional,omitempty"`)
+		if err != nil {
+			t.Fatalf("AddField() error = %v", err)
+		}
+
+		instance, err := builder.Build()
+		if err != nil {
+			t.Fatalf("Build() error = %v", err)
+		}
+
+		// Create pointer and set values
+		instancePtr := reflect.New(reflect.TypeOf(instance)).Interface()
+		instanceElem := reflect.ValueOf(instancePtr).Elem()
+
+		// Set values
+		instanceElem.FieldByName("UserName").SetString("testuser")
+		instanceElem.FieldByName("EmailAddress").SetString("test@example.com")
+		instanceElem.FieldByName("IsActive").SetBool(true)
+		instanceElem.FieldByName("SecretField").SetString("secret")
+		// Leave OptionalField empty to test omitempty
+
+		// Marshal to JSON
+		jsonData, err := json.Marshal(instancePtr)
+		if err != nil {
+			t.Fatalf("json.Marshal() error = %v", err)
+		}
+
+		// Verify JSON uses the tag names
+		var result map[string]interface{}
+		err = json.Unmarshal(jsonData, &result)
+		if err != nil {
+			t.Fatalf("json.Unmarshal() error = %v", err)
+		}
+
+		// Check that JSON keys match the tag names
+		if result["username"] != "testuser" {
+			t.Errorf("Expected username in JSON, got %v", result)
+		}
+		if result["email"] != "test@example.com" {
+			t.Errorf("Expected email in JSON, got %v", result)
+		}
+		if result["active"] != true {
+			t.Errorf("Expected active in JSON, got %v", result)
+		}
+
+		// Secret field should not appear in JSON (json:"-")
+		if _, exists := result["SecretField"]; exists {
+			t.Error("SecretField should not appear in JSON")
+		}
+
+		// Optional field should not appear due to omitempty and empty value
+		if _, exists := result["optional"]; exists {
+			t.Error("OptionalField should not appear in JSON due to omitempty")
+		}
+	})
+}
+
 func TestJSONWorkflow(t *testing.T) {
 	t.Run(
 		"complete_json_workflow", func(t *testing.T) {

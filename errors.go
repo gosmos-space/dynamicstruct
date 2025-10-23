@@ -10,4 +10,5 @@ var (
 	ErrValueCannotBeNil     = errors.New("value cannot be nil")
 	ErrFieldNotFound        = errors.New("field not found")
 	ErrIncompatibleTypes    = errors.New("incompatible types of value and field")
+	ErrInvalidTag           = errors.New("invalid struct tag format")
 )
